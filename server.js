@@ -1,46 +1,50 @@
 import { WebSocketServer } from "ws";
 
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
+const wss = new WebSocketServer({ port: PORT });
 
-// Render requires binding to 0.0.0.0
-const wss = new WebSocketServer({
-    port: PORT,
-    host: "0.0.0.0"
-});
-
-const rooms = new Map();
+// roomId -> [ws, ws]
+const rooms = {};
 
 wss.on("connection", (ws) => {
-    ws.roomId = null;
 
     ws.on("message", (message) => {
         let data;
+
         try {
-            data = JSON.parse(message.toString());
+            data = JSON.parse(message);
         } catch (err) {
-            console.error("Invalid JSON");
+            console.error("Invalid JSON received");
             return;
         }
 
-        // ===== JOIN ROOM =====
+        // ================= JOIN ROOM =================
         if (data.type === "join") {
-            ws.roomId = data.room;
+            const roomId = data.room;
+            ws.room = roomId;
 
-            if (!rooms.has(ws.roomId)) {
-                rooms.set(ws.roomId, new Set());
-            }
+            rooms[roomId] = rooms[roomId] || [];
+            rooms[roomId].push(ws);
 
-            rooms.get(ws.roomId).add(ws);
-            console.log(`User joined room: ${ws.roomId}`);
-            return;
+            // FIRST user = HOST
+            const isHost = rooms[roomId].length === 1;
+
+            ws.send(JSON.stringify({
+                type: "joined",
+                isHost
+            }));
+
+            console.log(
+                `User joined room ${roomId} | Host: ${isHost}`
+            );
         }
 
-        // ===== SIGNAL RELAY =====
-        if (data.type === "signal" && ws.roomId) {
-            const clients = rooms.get(ws.roomId);
-            if (!clients) return;
+        // ================= SIGNALING =================
+        if (data.type === "signal") {
+            const roomId = ws.room;
+            if (!roomId || !rooms[roomId]) return;
 
-            clients.forEach(client => {
+            rooms[roomId].forEach(client => {
                 if (client !== ws && client.readyState === 1) {
                     client.send(JSON.stringify({
                         type: "signal",
@@ -52,19 +56,17 @@ wss.on("connection", (ws) => {
     });
 
     ws.on("close", () => {
-        if (!ws.roomId) return;
+        const roomId = ws.room;
+        if (!roomId || !rooms[roomId]) return;
 
-        const room = rooms.get(ws.roomId);
-        if (!room) return;
+        rooms[roomId] = rooms[roomId].filter(c => c !== ws);
 
-        room.delete(ws);
-
-        if (room.size === 0) {
-            rooms.delete(ws.roomId);
+        if (rooms[roomId].length === 0) {
+            delete rooms[roomId];
         }
 
-        console.log(`User left room: ${ws.roomId}`);
+        console.log(`User left room ${roomId}`);
     });
 });
 
-console.log(`✅ WebSocket signaling server running on port ${PORT}`);
+console.log(`WebSocket server running on port ${PORT}`);
