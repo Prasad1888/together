@@ -2,34 +2,22 @@ import { WebSocketServer } from "ws";
 
 const port = process.env.PORT || 3000;
 const wss = new WebSocketServer({ port });
-
 const rooms = {};
 
 wss.on("connection", ws => {
     ws.on("message", msg => {
         let data;
-        try {
-            data = JSON.parse(msg);
-        } catch {
-            return;
-        }
+        try { data = JSON.parse(msg); }
+        catch (e) { console.error("Invalid JSON:", msg); return; }
 
-        // JOIN ROOM
+        // Join room
         if (data.type === "join") {
             ws.room = data.room;
             rooms[ws.room] = rooms[ws.room] || [];
-
-            // notify existing users
-            rooms[ws.room].forEach(client => {
-                if (client.readyState === 1) {
-                    client.send(JSON.stringify({ type: "user-joined" }));
-                }
-            });
-
             rooms[ws.room].push(ws);
         }
 
-        // SIGNALING
+        // Forward signaling data
         if (data.type === "signal") {
             rooms[ws.room]?.forEach(client => {
                 if (client !== ws && client.readyState === 1) {
@@ -45,4 +33,4 @@ wss.on("connection", ws => {
     });
 });
 
-console.log(`WebSocket server running on port ${port}`);
+console.log(`WebSocket server running on ws://localhost:${port}`);
