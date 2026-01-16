@@ -10,14 +10,12 @@ wss.on("connection", ws => {
         try { data = JSON.parse(msg); }
         catch (e) { console.error("Invalid JSON:", msg); return; }
 
-        // Join room
         if (data.type === "join") {
             ws.room = data.room;
             rooms[ws.room] = rooms[ws.room] || [];
             rooms[ws.room].push(ws);
         }
 
-        // Forward signaling data
         if (data.type === "signal") {
             rooms[ws.room]?.forEach(client => {
                 if (client !== ws && client.readyState === 1) {
